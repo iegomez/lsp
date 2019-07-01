@@ -1,0 +1,3 @@
+dev_eui,name,application_id,description,device_profile_id,skip_f_cnt_check,reference_altitude,dev_addr,nwk_key,app_key,gen_app_key,app_s_key,f_nwk_s_int_key,s_nwk_s_int_key,nwk_s_enc_key,activation
+0000000000000001,device1,1,device-description-1,6a131c25-3178-45d9-a9a4-c3cb3bfde06b,true,600.0,,00000000000000010000000000000001,b06a309cb576cc82a607f6339609f25f,,,,,,OTAA
+0000000000000002,device2,1,device-description-2,3134c2a7-97dc-48b4-a5cb-ce11e3be089c,true,600.0,00000001,,,,fe37b2fb6aa30900c04937944297817b,f99477469164b614343cf3581db64baa,f99477469164b614343cf3581db64baa,f99477469164b614343cf3581db64baa,ABP
