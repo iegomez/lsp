@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+
+	"github.com/iegomez/lsp"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -23,9 +26,19 @@ func main() {
 		fmt.Println("error: no password given")
 		return
 	}
-	err := Load(*filename, *hostname, *username, *password)
+	devices, err := lsp.Load(*filename)
 	if err != nil {
 		fmt.Printf("load error: %s\n", err)
 	}
+	token, err := lsp.Login(*username, *password, *hostname)
+	if err != nil {
+		fmt.Printf("login error: %s\n", err)
+	}
+
+	//Provision only logs errors.
+	lsp.Provision(devices, *hostname, fmt.Sprintf("Bearer %s", token))
+
+	log.Infoln("finished provisioning devices")
+
 	return
 }

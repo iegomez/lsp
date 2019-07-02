@@ -1,4 +1,4 @@
-package main
+package lsp
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"github.com/gocarina/gocsv"
 	"github.com/pkg/errors"
 	"gopkg.in/resty.v1"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -17,10 +19,12 @@ const (
 )
 
 type deviceRequest struct {
-	Device device `json:"device"`
+	Device Device `json:"device"`
 }
 
-type device struct {
+// Device holds all data to be extracted from the csv.
+// It's exported so we can return a list of devices to the caller.
+type Device struct {
 	DevEUI            string  `csv:"dev_eui" json:"devEUI"`
 	Name              string  `csv:"name" json:"name"`
 	ApplicationID     int64   `csv:"application_id" json:"applicationID"`
@@ -72,23 +76,8 @@ type loginResponse struct {
 	Token string `json:"jwt"`
 }
 
-// Load takes a filename and tries to retrieve devices from it.
-func Load(filename, hostname, username, password string) error {
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, os.ModePerm)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	devices := []*device{}
-
-	if err := gocsv.UnmarshalFile(file, &devices); err != nil { // Load clients from file
-		return err
-	}
-
-	fmt.Printf("got %d devices from file\n", len(devices))
-
-	//Now try to login to get a jwt token.
+// Login attempts to retrieve a jwt token, returns an error when not possible.
+func Login(username, password, hostname string) (string, error) {
 	req := loginRequest{
 		Username: username,
 		Password: password,
@@ -104,21 +93,39 @@ func Load(filename, hostname, username, password string) error {
 		Post(hostname + loginEnd)
 
 	if err != nil {
-		return errors.Wrap(err, "couldn't login")
+		return "", errors.Wrap(err, "couldn't login")
 	} else if rErr != nil {
-		fmt.Printf("unexpected error: %+v\n", rErr)
-		return errors.New("error at login")
+		log.Errorf("unexpected error: %+v\n", rErr)
+		return "", errors.New("error at login")
 	} else if resp.StatusCode() != 200 {
-		return errors.New("got status code different from 200")
+		return "", errors.New("got status code different from 200")
 	}
 
-	Provision(devices, hostname, fmt.Sprintf("Bearer %s", lr.Token))
+	return lr.Token, nil
+}
 
-	return nil
+// Load takes a filename and tries to retrieve devices from it.
+func Load(filename string) ([]*Device, error) {
+
+	var devices []*Device
+
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		return devices, err
+	}
+	defer file.Close()
+
+	if err := gocsv.UnmarshalFile(file, &devices); err != nil { // Load clients from file
+		return devices, err
+	}
+
+	log.Infof("got %d devices from file\n", len(devices))
+
+	return devices, nil
 }
 
 // Provision loops through devices to provision them.
-func Provision(devices []*device, hostname, jwtString string) {
+func Provision(devices []*Device, hostname, jwtString string) {
 	var result interface{}
 	var rErr interface{}
 	for i := 0; i < len(devices); i++ {
@@ -133,11 +140,11 @@ func Provision(devices []*device, hostname, jwtString string) {
 			SetError(&rErr).
 			Post(hostname + deviceEnd)
 		if err != nil {
-			fmt.Printf("couldn't provision device %s: %s\n", devices[i].DevEUI, err)
+			log.Errorf("couldn't provision device %s: %s\n", devices[i].DevEUI, err)
 		} else if rErr != nil {
-			fmt.Printf("couldn't provision device %s: %+v\n", devices[i].DevEUI, rErr)
+			log.Errorf("couldn't provision device %s: %+v\n", devices[i].DevEUI, rErr)
 		} else if resp.StatusCode() != 200 {
-			fmt.Printf("couldn't provision device %s: error code %d\n", devices[i].DevEUI, resp.StatusCode())
+			log.Errorf("couldn't provision device %s: error code %d\n", devices[i].DevEUI, resp.StatusCode())
 		} else {
 			if device.Activation == "ABP" {
 				da := deviceActivation{
@@ -158,11 +165,11 @@ func Provision(devices []*device, hostname, jwtString string) {
 					SetError(&rErr).
 					Post(hostname + fmt.Sprintf(activationEnd, devices[i].DevEUI))
 				if err != nil {
-					fmt.Printf("couldn't activate device %s: %s\n", devices[i].DevEUI, err)
+					log.Errorf("couldn't activate device %s: %s\n", devices[i].DevEUI, err)
 				} else if rErr != nil {
-					fmt.Printf("couldn't activate device %s: %+v\n", devices[i].DevEUI, rErr)
+					log.Errorf("couldn't activate device %s: %+v\n", devices[i].DevEUI, rErr)
 				} else if resp.StatusCode() != 200 {
-					fmt.Printf("couldn't activate device %s: error code %d\n", device.DevEUI, resp.StatusCode())
+					log.Errorf("couldn't activate device %s: error code %d\n", device.DevEUI, resp.StatusCode())
 				}
 			} else {
 				keys := deviceKeys{
@@ -183,11 +190,11 @@ func Provision(devices []*device, hostname, jwtString string) {
 					SetError(&rErr).
 					Post(hostname + fmt.Sprintf(keysEnd, device.DevEUI))
 				if err != nil {
-					fmt.Printf("couldn't set keys for device %s: %s\n", devices[i].DevEUI, err)
+					log.Errorf("couldn't set keys for device %s: %s\n", devices[i].DevEUI, err)
 				} else if rErr != nil {
-					fmt.Printf("couldn't set keys for device %s: %+v\n", devices[i].DevEUI, rErr)
+					log.Errorf("couldn't set keys for device %s: %+v\n", devices[i].DevEUI, rErr)
 				} else if resp.StatusCode() != 200 {
-					fmt.Printf("couldn't set keys for device %s: error code %d\n", devices[i].DevEUI, resp.StatusCode())
+					log.Errorf("couldn't set keys for device %s: error code %d\n", devices[i].DevEUI, resp.StatusCode())
 				}
 			}
 		}
